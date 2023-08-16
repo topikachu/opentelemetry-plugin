@@ -14,7 +14,10 @@ import io.opentelemetry.api.events.EventEmitter;
 import io.opentelemetry.api.logs.LoggerProvider;
 import io.opentelemetry.api.metrics.LongCounter;
 import io.opentelemetry.api.metrics.Meter;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanContext;
 import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.context.Context;
 import io.opentelemetry.sdk.autoconfigure.spi.ConfigProperties;
 import jenkins.YesNoMaybe;
 import jenkins.model.Jenkins;
@@ -88,5 +91,15 @@ public class MonitoringQueueListener extends QueueListener implements OtelCompon
         this.leftItemCounter.add(1);
         this.timeInQueueInMillisCounter.add(System.currentTimeMillis() - li.getInQueueSince());
         LOGGER.log(Level.FINE, () -> "onLeft(): " + li);
+    }
+
+    @Override
+    public void onEnterWaiting(Queue.WaitingItem wi) {
+        Span span = Span.fromContextOrNull(Context.current());
+        if (span != null && wi.getActions(RemoteSpanAction.class) != null) {
+            SpanContext spanContext = span.getSpanContext();
+            wi.addAction(new RemoteSpanAction(spanContext.getTraceId(), spanContext.getSpanId(), spanContext.getTraceFlags().asByte(), spanContext.getTraceState().asMap()));
+            LOGGER.log(Level.FINE, () -> "attach RemoteSpanAction to " + wi);
+        }
     }
 }

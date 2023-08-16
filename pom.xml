@@ -371,6 +371,8 @@
                 </exclusion>
             </exclusions>
         </dependency>
+
+
         <!-- For JUnit test results UI compatibility -->
         <dependency>
             <groupId>org.jenkins-ci.plugins</groupId>
@@ -403,6 +405,18 @@
                     <artifactId>commons-compress</artifactId>
                 </exclusion>
             </exclusions>
+        </dependency>
+        <!-- For test remote trigger -->
+        <dependency>
+            <groupId>org.jenkins-ci.plugins</groupId>
+            <artifactId>http_request</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.awaitility</groupId>
+            <artifactId>awaitility</artifactId>
+            <version>4.2.0</version>
+            <scope>test</scope>
         </dependency>
     </dependencies>
     <build>

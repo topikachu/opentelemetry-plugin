@@ -5,18 +5,26 @@
 
 package io.jenkins.plugins.opentelemetry.servlet;
 
+import com.google.common.collect.Iterators;
+import edu.umd.cs.findbugs.annotations.Nullable;
 import hudson.model.User;
 import io.jenkins.plugins.opentelemetry.semconv.JenkinsOtelSemanticAttributes;
-import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.api.baggage.propagation.W3CBaggagePropagator;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanBuilder;
 import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.api.trace.propagation.W3CTraceContextPropagator;
+import io.opentelemetry.context.Context;
 import io.opentelemetry.context.Scope;
+import io.opentelemetry.context.propagation.ContextPropagators;
+import io.opentelemetry.context.propagation.TextMapGetter;
+import io.opentelemetry.context.propagation.TextMapPropagator;
+import io.opentelemetry.extension.trace.propagation.JaegerPropagator;
+import io.opentelemetry.extension.trace.propagation.OtTracePropagator;
 import io.opentelemetry.semconv.trace.attributes.SemanticAttributes;
 import org.apache.commons.lang.StringUtils;
 
-import edu.umd.cs.findbugs.annotations.Nullable;
 import javax.servlet.Filter;
 import javax.servlet.FilterChain;
 import javax.servlet.FilterConfig;
@@ -31,8 +39,8 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.StringTokenizer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -225,6 +233,36 @@ public class OpenTelemetryServletFilter implements Filter {
         User user = User.current();
         if (user != null) {
             spanBuilder.setAttribute(SemanticAttributes.ENDUSER_ID, user.getId());
+        }
+
+
+        ContextPropagators propagators = ContextPropagators.create(
+            TextMapPropagator.composite(
+                OtTracePropagator.getInstance(),
+                W3CTraceContextPropagator.getInstance(),
+                W3CBaggagePropagator.getInstance(),
+                JaegerPropagator.getInstance()
+            ));
+        Context parentContext = propagators.getTextMapPropagator().extract(Context.current(), servletRequest, new TextMapGetter<>() {
+            @Override
+            public Iterable<String> keys(HttpServletRequest carrier) {
+                return () -> Optional.ofNullable(carrier)
+                    .map(HttpServletRequest::getHeaderNames)
+                    .map(headers -> Iterators.forEnumeration(headers))
+                    .orElseGet(() -> Iterators.forEnumeration(Collections.emptyEnumeration()));
+            }
+
+            @javax.annotation.Nullable
+            @Override
+            public String get(@javax.annotation.Nullable HttpServletRequest carrier, String key) {
+                return Optional.ofNullable(carrier)
+                    .map(c -> c.getHeader(key))
+                    .orElse(null);
+            }
+        });
+
+        if (parentContext != Context.current()) {
+            spanBuilder.setParent(parentContext);
         }
 
         Span span = spanBuilder.startSpan();
